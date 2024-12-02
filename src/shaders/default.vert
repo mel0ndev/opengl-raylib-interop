@@ -22,6 +22,7 @@ void main()
     // Calculate final vertex position (jiggle it around a bit horizontally)
     //pos += vec2(100, 0) * sin(period * currentTime);
     //gl_Position = mvp * vec4(pos, 0.0, 1.0);
+    worldPos.x += 100 * sin(currentTime); 
     gl_Position = mvp * vec4(worldPos, 1.0); 
 
     // Calculate the screen space size of this particle (also vary it over time)

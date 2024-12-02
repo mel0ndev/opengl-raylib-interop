@@ -64,11 +64,18 @@ pub fn main() !void {
     //};
 
 
+    //const vertices = [_]f32{
+    //    -0.5, -0.5, 0.0,   // Bottom left
+    //    -0.5,  0.5, 0.0,  // Top left
+    //     0.5, -0.5, 0.0,  // Bottom right
+    //     0.5,  0.5, 0.0  // Top right
+    //};
+    
     const vertices = [_]f32{
-        -0.5, -0.5, 0.0,   // Bottom left
-        -0.5,  0.5, 0.0,  // Top left
-         0.5, -0.5, 0.0,  // Bottom right
-         0.5,  0.5, 0.0  // Top right
+        0.0,  0.0,  0.0,   // Bottom left
+        0.0,  32.0, 0.0,  // Top left
+        32.0, 0.0,  0.0,  // Bottom right
+        32.0, 32.0,  0.0  // Top right
     };
     
 
@@ -199,9 +206,9 @@ pub fn main() !void {
          c.BeginMode2D(camera); 
 
         // Draw UI elements
-        c.DrawRectangle(10, 10, 210, 30, c.MAROON);
+        c.DrawRectangle(10, 10, 275, 30, c.MAROON);
         c.DrawText(
-            std.fmt.comptimePrint("{d} particles in one vertex buffer", .{MAX_PARTICLES}).ptr,
+            std.fmt.comptimePrint("{d} quads rendered as instances in world space!", .{MAX_PARTICLES}).ptr,
             20,
             20,
             10,
