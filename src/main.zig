@@ -12,7 +12,6 @@ const Vec2 = c.Vector2;
 // Constants
 const MAX_PARTICLES = 1000;
 const GLSL_VERSION = 330;
-const MAX_INSTANCES = 1000; 
 
 // Particle struct using packed attribute to match C memory layout
 const Particle = extern struct {
@@ -31,21 +30,18 @@ pub fn main() !void {
     var player: c.Rectangle = .{
         .x = screenWidth / 2,  // Start player in middle of world
         .y =  screenHeight / 2,
-        .width = 100, 
+        .width = 100,
         .height = 100
-    }; 
-    
+    };
+
     var camera: c.Camera2D = undefined; 
     camera.target = c.Vector2{.x = player.x, .y = player.y}; 
     camera.offset = c.Vector2{.x = screenWidth / 2, .y = screenHeight / 2}; 
     camera.rotation = 0.0; 
     camera.zoom = 1.0; 
 
-
     // Load shaders with proper version
     const shader = c.LoadShader(c.TextFormat("src/shaders/default.vert"), c.TextFormat("src/shaders/default.frag")); 
-
-    const texture = c.LoadTexture("src/wooden_sword.png");
 
     const currentTimeLoc = c.GetShaderLocation(shader, "currentTime");
     const colorLoc = c.GetShaderLocation(shader, "color");
@@ -55,24 +51,11 @@ pub fn main() !void {
     var prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
     const random = prng.random();
 
-
-    const width = @as(f32, @floatFromInt(texture.width)); 
-    const height = @as(f32, @floatFromInt(texture.height)); 
-
-    const vertices = [_]f32{
-        // Positions            // Texture coords
-        0.0, 0.0,        //0.0, 1.0,    // Top-left
-        width, 0.0,   //1.0, 1.0,    // Top-right
-        0.0, height,  //0.0, 0.0,    // Bottom-left
-        width, height //1.0, 0.0     // Bottom-right
-    }; 
-
     // Initialize particles with random values
     for (&particles) |*particle| {
         particle.* = .{
-            //.x = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 20, screenWidth - 20))),
-            //.y = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 50, screenHeight - 20))),
-            .x = 0, .y = 0, 
+            .x = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 20, screenWidth - 20))),
+            .y = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 50, screenHeight - 20))),
             .period = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 10, 30))) / 10.0,
         };
     }
@@ -91,24 +74,7 @@ pub fn main() !void {
         &particles,
         c.GL_STATIC_DRAW
     );
-
-    //c.glBufferData(
-    //    c.GL_ARRAY_BUFFER,
-    //    @sizeOf(f32) * vertices.len,
-    //    &vertices,
-    //    c.GL_STATIC_DRAW
-    //); 
     
-    //c.glVertexAttribPointer(
-    //    @intCast(shader.locs[c.SHADER_LOC_VERTEX_POSITION]),
-    //    3,
-    //    c.GL_FLOAT,
-    //    c.GL_FALSE,
-    //    //3 * @sizeOf(f32),
-    //    0,
-    //    null
-    //);
-
     c.glVertexAttribPointer(
         @intCast(shader.locs[c.SHADER_LOC_VERTEX_POSITION]),
         3,
@@ -117,62 +83,14 @@ pub fn main() !void {
         0,
         null
     );
-
     c.glEnableVertexAttribArray(0);
     c.glBindBuffer(c.GL_ARRAY_BUFFER, 0);
     c.glBindVertexArray(0);
 
-    //positions
-    
-    c.glBindVertexArray(vao); 
-    var instanceVBO: c_uint = undefined; 
-    c.glGenBuffers(1, &instanceVBO); 
-    c.glBindBuffer(c.GL_ARRAY_BUFFER, instanceVBO); 
-
-    c.glBufferData(
-        c.GL_ARRAY_BUFFER, 
-        @sizeOf(Vec2) * MAX_INSTANCES,
-        null,  //no data yet
-        c.GL_DYNAMIC_DRAW
-    ); 
-
-    c.glVertexAttribPointer(
-        1, //location 
-        2, //size (2 floats)
-        c.GL_FLOAT,
-        c.GL_FALSE,
-        @sizeOf(Vec2),
-        null, //no offset
-    ); 
-    c.glEnableVertexAttribArray(1); 
-    c.glVertexAttribDivisor(1, 1); 
-
-
-    //instance data creation
-    var instance_data: [MAX_INSTANCES]Vec2 = undefined;
-    for (0..instance_data.len) |i| {
-        instance_data[i] = .{
-            .x = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 20, screenWidth - 20))),
-            .y = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 50, screenHeight - 20))),
-            //.x = 50, .y = 50
-        }; 
-    }
-    
-    //upload to our instance VBO
-    c.glBindBuffer(c.GL_ARRAY_BUFFER, instanceVBO); 
-    c.glBufferSubData(
-        c.GL_ARRAY_BUFFER,
-        0, //no offset
-        @sizeOf(Vec2) * MAX_INSTANCES,
-        &instance_data
-    ); 
-
     // Enable point size control in vertex shader
     c.glEnable(c.GL_PROGRAM_POINT_SIZE);
 
-    _ = vertices; 
-
-    //c.SetTargetFPS(60);
+    c.SetTargetFPS(60);
 
     // Main game loop
     while (!c.WindowShouldClose()) {
@@ -190,6 +108,8 @@ pub fn main() !void {
         c.BeginDrawing();
         
         c.ClearBackground(c.WHITE);
+        
+         c.BeginMode2D(camera); 
 
         // Draw UI elements
         c.DrawRectangle(10, 10, 210, 30, c.MAROON);
@@ -202,9 +122,6 @@ pub fn main() !void {
         );
 
         c.rlDrawRenderBatchActive();
-
-        //camera? 
-        c.BeginMode2D(camera); 
 
         // OpenGL rendering
         c.glUseProgram(shader.id);
@@ -233,18 +150,14 @@ pub fn main() !void {
 
         // Draw particles
         c.glBindVertexArray(vao);
-        //c.glDrawArraysInstanced(c.GL_TRIANGLE_STRIP, 0, 4, MAX_INSTANCES);
-        c.glDrawArraysInstanced(c.GL_POINTS, 0, 1, MAX_PARTICLES); 
+        c.glDrawArrays(c.GL_POINTS, 0, MAX_PARTICLES);
         c.glBindVertexArray(0);
 
-        
-        //switch back to default shader
         c.glUseProgram(0);
-        
 
-        c.DrawRectangleRec(player, c.BLUE); 
+        c.DrawRectangleRec(player, c.BLUE);
 
-        c.EndMode2D(); 
+        c.EndMode2D();
 
         c.DrawFPS(screenWidth - 100, 10);
 
