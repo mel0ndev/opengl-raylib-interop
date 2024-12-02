@@ -1,198 +1,259 @@
 const std = @import("std");
-const raylib = @cImport({                                                                
-    @cInclude("raylib.h");                                                               
-}); 
+const c = @cImport({
+    @cInclude("raylib.h");
+    @cInclude("rlgl.h"); 
+    @cInclude("raymath.h"); 
+    @cInclude("rcamera.h"); 
+    @cDefine("GL_GLEXT_PROTOTYPES", "1");
+    @cInclude("GL/glcorearb.h");
+});
+const Vec2 = c.Vector2; 
+
+// Constants
+const MAX_PARTICLES = 1000;
+const GLSL_VERSION = 330;
+const MAX_INSTANCES = 1000; 
+
+// Particle struct using packed attribute to match C memory layout
+const Particle = extern struct {
+    x: f32,
+    y: f32,
+    period: f32,
+};
 
 pub fn main() !void {
- var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer {
-        const deinit_status = gpa.deinit();
-        //fail test; can't try in defer as defer is executed after we return
-        if (deinit_status == .leak) std.testing.expect(false) catch @panic("TEST FAIL");
-    }
-    const allocator = gpa.allocator();
-    _ = allocator; 
+    // Initialization
+    const screenWidth = 800;
+    const screenHeight = 450;
 
-    const screenWidth: f32 = 1280;
-    const screenHeight: f32 = 720;
+    c.InitWindow(screenWidth, screenHeight, "raylib - point particles");
 
-    raylib.SetConfigFlags(raylib.FLAG_WINDOW_RESIZABLE);
-    raylib.InitWindow(screenWidth, screenHeight, "Raylib Render Texture Test");
-
-    var player: raylib.Rectangle = .{
-        .x = screenWidth / 2 - 50, 
-        .y = screenHeight / 2 - 100, 
+    var player: c.Rectangle = .{
+        .x = screenWidth / 2,  // Start player in middle of world
+        .y =  screenHeight / 2,
         .width = 100, 
         .height = 100
     }; 
-
-    var camera: raylib.Camera2D = undefined; 
-    camera.target = raylib.Vector2{.x = player.x, .y = player.y}; 
-    camera.offset = raylib.Vector2{.x = screenWidth / 2 - 50, .y = screenWidth / 2 - 380}; 
+    
+    var camera: c.Camera2D = undefined; 
+    camera.target = c.Vector2{.x = player.x, .y = player.y}; 
+    camera.offset = c.Vector2{.x = screenWidth / 2, .y = screenHeight / 2}; 
     camera.rotation = 0.0; 
     camera.zoom = 1.0; 
 
 
+    // Load shaders with proper version
+    const shader = c.LoadShader(c.TextFormat("src/shaders/default.vert"), c.TextFormat("src/shaders/default.frag")); 
 
-    // Load water shader
-    // NOTE: Defining 0 (NULL) for vertex shader forces usage of internal default vertex shader
-    const shader = raylib.LoadShader(0, "src/water.frag");
-    const world_shader = raylib.LoadShader(0, "src/reflection.frag"); 
-    
-    const target: raylib.RenderTexture2D = raylib.LoadRenderTexture(screenWidth, screenHeight); 
-    const world_target: raylib.RenderTexture2D = raylib.LoadRenderTexture(screenWidth, screenHeight); 
+    const texture = c.LoadTexture("src/wooden_sword.png");
 
-    var u_time: f32 = 0; 
-    const u_time_loc = raylib.GetShaderLocation(shader, "u_time");
-    const reflection_loc = raylib.GetShaderLocation(shader, "reflection"); 
+    const currentTimeLoc = c.GetShaderLocation(shader, "currentTime");
+    const colorLoc = c.GetShaderLocation(shader, "color");
 
-    const u_time_loc_ref = raylib.GetShaderLocation(world_shader, "u_time");
-    const reflection_loc_ref = raylib.GetShaderLocation(world_shader, "reflection"); 
+    // Initialize particle array
+    var particles: [MAX_PARTICLES]Particle = undefined;
+    var prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
+    const random = prng.random();
 
-    raylib.SetTargetFPS(60);                   // Set our game to run at 60 frames-per-second
-    //--------------------------------------------------------------------------------------
 
-    // Main game loop
-    while (!raylib.WindowShouldClose())        // Detect window close button or ESC key
-    {
-        // Update
-        //----------------------------------------------------------------------------------
-        const deltaTime = raylib.GetFrameTime();
-        u_time += deltaTime;
+    const width = @as(f32, @floatFromInt(texture.width)); 
+    const height = @as(f32, @floatFromInt(texture.height)); 
 
-        camera.target.x = player.x; 
-        camera.target.y = player.y; 
+    const vertices = [_]f32{
+        // Positions            // Texture coords
+        0.0, 0.0,        //0.0, 1.0,    // Top-left
+        width, 0.0,   //1.0, 1.0,    // Top-right
+        0.0, height,  //0.0, 0.0,    // Bottom-left
+        width, height //1.0, 0.0     // Bottom-right
+    }; 
 
-        // Set shader required uniform values
-        raylib.SetShaderValue(shader, u_time_loc, &u_time, raylib.SHADER_UNIFORM_FLOAT);
-        raylib.SetShaderValue(world_shader, u_time_loc_ref, &u_time, raylib.SHADER_UNIFORM_FLOAT);
-        //----------------------------------------------------------------------------------
-        
-        if (raylib.IsKeyDown(raylib.KEY_A)) {
-            player.x -= 2.0; 
-        }
-
-        if (raylib.IsKeyDown(raylib.KEY_D)) {
-            player.x += 2.0; 
-        }
-
-        if (raylib.IsKeyDown(raylib.KEY_W)) {
-            player.y -= 2.0; 
-        }
-
-        if (raylib.IsKeyDown(raylib.KEY_S)) {
-            player.y += 2.0; 
-        }
-
-        // Draw
-        //----------------------------------------------------------------------------------
-        raylib.BeginTextureMode(world_target); 
-            raylib.ClearBackground(raylib.RAYWHITE);
-
-            raylib.DrawTriangle(
-                raylib.Vector2{.x = 50, .y = screenHeight - 150},
-                raylib.Vector2{.x = 25, .y = screenHeight - 100},
-                raylib.Vector2{.x = 75, .y = screenHeight - 100},
-                raylib.PINK
-            ); 
-
-            raylib.DrawTriangle(
-                raylib.Vector2{.x = 300, .y = screenHeight - 400},
-                raylib.Vector2{.x = 250, .y = screenHeight - 350},
-                raylib.Vector2{.x = 350, .y = screenHeight - 350},
-                raylib.BLUE
-            ); 
-        raylib.EndTextureMode(); 
-
-        //then we render what we want to reflect to the render texture 
-        raylib.BeginTextureMode(target); 
-        raylib.BeginMode2D(camera); 
-            raylib.ClearBackground(raylib.RAYWHITE);
-            raylib.DrawRectangleRec(player, raylib.GREEN);
-
-        raylib.EndMode2D(); 
-        raylib.EndTextureMode(); 
-
-        raylib.BeginDrawing();
-            raylib.ClearBackground(raylib.WHITE);
-
-             //first, we draw the scene normally
-             raylib.BeginMode2D(camera); 
-                 raylib.DrawRectangle(0, 0, screenWidth, screenHeight, raylib.RED); 
-                 raylib.DrawRectangleRec(player, raylib.GREEN); 
-
-            raylib.DrawTriangle(
-                raylib.Vector2{.x = 50, .y = 50},
-                raylib.Vector2{.x = 25, .y = 100},
-                raylib.Vector2{.x = 75, .y = 100},
-                raylib.PINK
-            ); 
-
-            raylib.DrawTriangle(
-                raylib.Vector2{.x = 300, .y = 300},
-                raylib.Vector2{.x = 250, .y = 350},
-                raylib.Vector2{.x = 350, .y = 350},
-                raylib.BLUE
-            ); 
-
-                //raylib.BeginScissorMode(screenWidth / 2 - 250, 0, 500, 1000); 
-                raylib.BeginShaderMode(world_shader);
-
-                    raylib.SetShaderValueTexture(world_shader, reflection_loc_ref, world_target.texture); 
-
-                    raylib.DrawTextureRec(
-                        world_target.texture,
-                        raylib.Rectangle{
-                            .x = 0,
-                            .y = 0,
-                            .width = @floatFromInt(target.texture.width),
-                            .height = @floatFromInt(target.texture.height), 
-                        },
-                        raylib.Vector2{
-                            .x = 0, 
-                            .y = 0,
-                        },
-                        raylib.WHITE
-                    ); 
-                    
-                    //raylib.DrawRectanglePro(
-
-                    //); 
-                    //
-                raylib.EndShaderMode(); 
-                //then we begin drawing the reflection shader
-                raylib.BeginShaderMode(shader);
-                    //set the shader texture value to the texture we set above
-                    raylib.SetShaderValueTexture(shader, reflection_loc, target.texture); 
-
-                    //then draw the texture to the screen
-                    raylib.DrawTextureRec(
-                        target.texture,
-                        raylib.Rectangle{
-                            .x = 0,
-                            .y = 0,
-                            .width = @floatFromInt(target.texture.width),
-                            .height = @floatFromInt(-target.texture.height), 
-                        },
-                        raylib.Vector2{
-                            .x = camera.target.x - camera.offset.x, 
-                            .y = camera.target.y - camera.offset.y
-                        },
-                        raylib.WHITE
-                    ); 
-                raylib.EndShaderMode();
-                //raylib.EndScissorMode(); 
-             raylib.EndMode2D(); 
-
-        raylib.EndDrawing();
-        //----------------------------------------------------------------------------------
+    // Initialize particles with random values
+    for (&particles) |*particle| {
+        particle.* = .{
+            //.x = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 20, screenWidth - 20))),
+            //.y = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 50, screenHeight - 20))),
+            .x = 0, .y = 0, 
+            .period = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 10, 30))) / 10.0,
+        };
     }
 
-    // De-Initialization
-    //--------------------------------------------------------------------------------------
-    raylib.UnloadShader(shader);           // Unload shader
+    // OpenGL setup
+    var vao: c.GLuint = 0;
+    var vbo: c.GLuint = 0;
+    c.glGenVertexArrays(1, &vao);
+    c.glBindVertexArray(vao);
+    
+    c.glGenBuffers(1, &vbo);
+    c.glBindBuffer(c.GL_ARRAY_BUFFER, vbo);
+    c.glBufferData(
+        c.GL_ARRAY_BUFFER,
+        @intCast(MAX_PARTICLES * @sizeOf(Particle)),
+        &particles,
+        c.GL_STATIC_DRAW
+    );
 
-    raylib.CloseWindow();                  // Close window and OpenGL context
-    //--------------------------------------------------------------------------------------
+    //c.glBufferData(
+    //    c.GL_ARRAY_BUFFER,
+    //    @sizeOf(f32) * vertices.len,
+    //    &vertices,
+    //    c.GL_STATIC_DRAW
+    //); 
+    
+    //c.glVertexAttribPointer(
+    //    @intCast(shader.locs[c.SHADER_LOC_VERTEX_POSITION]),
+    //    3,
+    //    c.GL_FLOAT,
+    //    c.GL_FALSE,
+    //    //3 * @sizeOf(f32),
+    //    0,
+    //    null
+    //);
 
+    c.glVertexAttribPointer(
+        @intCast(shader.locs[c.SHADER_LOC_VERTEX_POSITION]),
+        3,
+        c.GL_FLOAT,
+        c.GL_FALSE,
+        0,
+        null
+    );
+
+    c.glEnableVertexAttribArray(0);
+    c.glBindBuffer(c.GL_ARRAY_BUFFER, 0);
+    c.glBindVertexArray(0);
+
+    //positions
+    
+    c.glBindVertexArray(vao); 
+    var instanceVBO: c_uint = undefined; 
+    c.glGenBuffers(1, &instanceVBO); 
+    c.glBindBuffer(c.GL_ARRAY_BUFFER, instanceVBO); 
+
+    c.glBufferData(
+        c.GL_ARRAY_BUFFER, 
+        @sizeOf(Vec2) * MAX_INSTANCES,
+        null,  //no data yet
+        c.GL_DYNAMIC_DRAW
+    ); 
+
+    c.glVertexAttribPointer(
+        1, //location 
+        2, //size (2 floats)
+        c.GL_FLOAT,
+        c.GL_FALSE,
+        @sizeOf(Vec2),
+        null, //no offset
+    ); 
+    c.glEnableVertexAttribArray(1); 
+    c.glVertexAttribDivisor(1, 1); 
+
+
+    //instance data creation
+    var instance_data: [MAX_INSTANCES]Vec2 = undefined;
+    for (0..instance_data.len) |i| {
+        instance_data[i] = .{
+            .x = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 20, screenWidth - 20))),
+            .y = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 50, screenHeight - 20))),
+            //.x = 50, .y = 50
+        }; 
+    }
+    
+    //upload to our instance VBO
+    c.glBindBuffer(c.GL_ARRAY_BUFFER, instanceVBO); 
+    c.glBufferSubData(
+        c.GL_ARRAY_BUFFER,
+        0, //no offset
+        @sizeOf(Vec2) * MAX_INSTANCES,
+        &instance_data
+    ); 
+
+    // Enable point size control in vertex shader
+    c.glEnable(c.GL_PROGRAM_POINT_SIZE);
+
+    _ = vertices; 
+
+    //c.SetTargetFPS(60);
+
+    // Main game loop
+    while (!c.WindowShouldClose()) {
+        const deltaTime = c.GetFrameTime();
+        const moveSpeed = 200; 
+
+        if (c.IsKeyDown(c.KEY_A)) player.x -= moveSpeed * deltaTime;
+        if (c.IsKeyDown(c.KEY_D)) player.x += moveSpeed * deltaTime;
+        if (c.IsKeyDown(c.KEY_W)) player.y -= moveSpeed * deltaTime;
+        if (c.IsKeyDown(c.KEY_S)) player.y += moveSpeed * deltaTime;
+
+        camera.target = c.Vector2{.x = player.x, .y = player.y};
+
+        // Drawing
+        c.BeginDrawing();
+        
+        c.ClearBackground(c.WHITE);
+
+        // Draw UI elements
+        c.DrawRectangle(10, 10, 210, 30, c.MAROON);
+        c.DrawText(
+            std.fmt.comptimePrint("{d} particles in one vertex buffer", .{MAX_PARTICLES}).ptr,
+            20,
+            20,
+            10,
+            c.RAYWHITE
+        );
+
+        c.rlDrawRenderBatchActive();
+
+        //camera? 
+        c.BeginMode2D(camera); 
+
+        // OpenGL rendering
+        c.glUseProgram(shader.id);
+
+        c.glUniform1f(currentTimeLoc, @floatCast(c.GetTime())); 
+
+        const color = c.ColorNormalize(.{
+            .r = 255,
+            .g = 0,
+            .b = 0,
+            .a = 128,
+        });
+        c.glUniform4fv(colorLoc, 1, @ptrCast(&color));
+
+        // Get and set modelview projection matrix
+        const modelViewProjection = c.MatrixMultiply(
+            c.rlGetMatrixModelview(),
+            c.rlGetMatrixProjection()
+        );
+        c.glUniformMatrix4fv(
+            shader.locs[c.SHADER_LOC_MATRIX_MVP],
+            1,
+            c.GL_FALSE,
+            &c.MatrixToFloat(modelViewProjection)
+        );
+
+        // Draw particles
+        c.glBindVertexArray(vao);
+        //c.glDrawArraysInstanced(c.GL_TRIANGLE_STRIP, 0, 4, MAX_INSTANCES);
+        c.glDrawArraysInstanced(c.GL_POINTS, 0, 1, MAX_PARTICLES); 
+        c.glBindVertexArray(0);
+
+        
+        //switch back to default shader
+        c.glUseProgram(0);
+        
+
+        c.DrawRectangleRec(player, c.BLUE); 
+
+        c.EndMode2D(); 
+
+        c.DrawFPS(screenWidth - 100, 10);
+
+        c.EndDrawing();
+    }
+
+    // Cleanup
+    c.glDeleteBuffers(1, &vbo);
+    c.glDeleteVertexArrays(1, &vao);
+    c.UnloadShader(shader);
+    c.CloseWindow();
 }
