@@ -1,7 +1,8 @@
 #version 330
 
 // Input vertex attributes
-in vec3 vertexPosition;
+layout (location = 0) in vec3 vertexPosition;
+layout (location  = 1) in vec2 instancePosition; 
 
 // Input uniform values
 uniform mat4 mvp;
@@ -12,7 +13,7 @@ uniform float currentTime;
 void main()
 {
     // Unpack data from vertexPosition
-    vec2  pos    = vertexPosition.xy;
+    vec2  pos    = vertexPosition.xy + instancePosition.xy;
     float period = vertexPosition.z;
 
     // Calculate final vertex position (jiggle it around a bit horizontally)

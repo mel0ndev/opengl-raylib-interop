@@ -54,8 +54,9 @@ pub fn main() !void {
     // Initialize particles with random values
     for (&particles) |*particle| {
         particle.* = .{
-            .x = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 20, screenWidth - 20))),
-            .y = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 50, screenHeight - 20))),
+            //.x = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 20, screenWidth - 20))),
+            //.y = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 50, screenHeight - 20))),
+            .x = 0, .y = 0,
             .period = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 10, 30))) / 10.0,
         };
     }
@@ -87,10 +88,53 @@ pub fn main() !void {
     c.glBindBuffer(c.GL_ARRAY_BUFFER, 0);
     c.glBindVertexArray(0);
 
+    c.glBindVertexArray(vao);
+    var instanceVBO: c_uint = undefined;
+    c.glGenBuffers(1, &instanceVBO);
+    c.glBindBuffer(c.GL_ARRAY_BUFFER, instanceVBO);
+
+    c.glBufferData(
+        c.GL_ARRAY_BUFFER,
+        @sizeOf(Vec2) * MAX_PARTICLES,
+        null,  //no data yet
+        c.GL_DYNAMIC_DRAW
+    );
+
+    c.glVertexAttribPointer(
+        1, //location
+        2, //size (2 floats)
+        c.GL_FLOAT,
+        c.GL_FALSE,
+        @sizeOf(Vec2),
+        null, //no offset
+    );
+    c.glEnableVertexAttribArray(1);
+    c.glVertexAttribDivisor(1, 1);
+
+    //instance data creation
+    var instance_data: [MAX_PARTICLES]Vec2 = undefined;
+    for (0..instance_data.len) |i| {
+        instance_data[i] = .{
+            .x = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 20, screenWidth - 20))),
+            .y = @as(f32, @floatFromInt(random.intRangeAtMost(i32, 50, screenHeight - 20))),
+            //.x = 50, .y = 50
+        };
+    }
+
+     //upload to our instance VBO
+    c.glBindBuffer(c.GL_ARRAY_BUFFER, instanceVBO);
+    c.glBufferSubData(
+        c.GL_ARRAY_BUFFER,
+        0, //no offset
+        @sizeOf(Vec2) * MAX_PARTICLES,
+        &instance_data
+    );
+
+
     // Enable point size control in vertex shader
     c.glEnable(c.GL_PROGRAM_POINT_SIZE);
 
-    c.SetTargetFPS(60);
+    //c.SetTargetFPS(60);
 
     // Main game loop
     while (!c.WindowShouldClose()) {
@@ -150,7 +194,7 @@ pub fn main() !void {
 
         // Draw particles
         c.glBindVertexArray(vao);
-        c.glDrawArrays(c.GL_POINTS, 0, MAX_PARTICLES);
+        c.glDrawArraysInstanced(c.GL_POINTS, 0, 1, MAX_PARTICLES);
         c.glBindVertexArray(0);
 
         c.glUseProgram(0);
