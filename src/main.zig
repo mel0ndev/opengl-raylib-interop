@@ -9,7 +9,7 @@ const c = @cImport({
 });
 const Vec2 = c.Vector2; 
 // Constants
-const MAX_PARTICLES = 1000;
+const MAX_PARTICLES = 100; 
 const GLSL_VERSION = 330;
 
 // Particle struct using packed attribute to match C memory layout
@@ -21,7 +21,8 @@ const Particle = extern struct {
 
 const Quad = struct {
     position: [3]f32,
-    color: [4]f32
+    color: [4]f32,
+    rotation: f32,
 }; 
 
 pub fn main() !void {
@@ -53,7 +54,6 @@ pub fn main() !void {
     const currentTimeLoc = c.GetShaderLocation(shader, "currentTime");
     const colorLoc = c.GetShaderLocation(shader, "color");
     const textureLoc = c.GetShaderLocation(shader, "texture0");
-    const num_layers_loc = c.GetShaderLocation(shader, "num_layers");
     const layer_offset_loc = c.GetShaderLocation(shader, "layer_offset");
 
 
@@ -186,8 +186,18 @@ pub fn main() !void {
     );
     c.glEnableVertexAttribArray(2);
     c.glVertexAttribDivisor(2, 8);
+        
+    c.glVertexAttribPointer(
+        4, 
+        1, 
+        c.GL_FLOAT,
+        c.GL_FALSE,
+        @sizeOf(Quad),
+        @ptrFromInt(@offsetOf(Quad, "rotation"))
+    ); 
+    c.glEnableVertexAttribArray(4);  
+    c.glVertexAttribDivisor(4, 8); 
     
-
     //instance data creation
     var instance_data: [MAX_PARTICLES]Quad = undefined;
     for (0..instance_data.len) |i| {
@@ -203,6 +213,7 @@ pub fn main() !void {
                 random.float(f32),     // b
                 1.0,                   // a
             },
+            .rotation = 0.0,
         };
     }
 
@@ -302,7 +313,6 @@ pub fn main() !void {
             c.GL_FALSE,
             &c.MatrixToFloat(modelViewProjection)
         );
-        c.glUniform1f(num_layers_loc, num_layers);  // Or however many layers your sprite has
         c.glUniform1f(layer_offset_loc, 1.0);  // Adjust this value to control layer spacing
 
         // Draw particles
